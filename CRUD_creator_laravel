@@ -1,0 +1,291 @@
+
+model_name = 'driver'
+model_name_capitalized = model_name[0].upper() + model_name[1:]
+
+model_names = 'drivers'
+model_names_capitalized=model_names[0].upper() + model_names[1:]
+
+parameter_names = [
+        'code',
+        'birth_date',
+        'sex',
+        'join_date',
+        'national_code',
+        'national_id',
+        'certificate_id',
+        'certificate_date',
+        'sheba_id',
+        'is_external',
+        'address',
+        'type',
+        'is_first_mile'
+    ]
+
+parameter_names_swagger = """"""
+
+for parameter_name in parameter_names:
+    parameter_type = 'string'
+    if 'id' in parameter_name or 'number' in parameter_name or 'no' in parameter_name or 'code' in parameter_name:
+        parameter_type = 'int'
+
+    parameter_definition = f"""
+     *     @OA\\Parameter(
+     *         name="{parameter_name}",
+     *         in="query",
+     *         required=false,
+     *         @OA\\Schema(type="string")
+     *     ),
+    """
+    parameter_names_swagger += parameter_definition
+
+validator_rules = ""
+model_creation_code = ""
+
+for parameter_name in parameter_names:
+    validation_rule = f"'{parameter_name}' => 'string'"
+
+    if 'id' in parameter_name or 'number' in parameter_name or 'no' in parameter_name or 'code' in parameter_name:
+        validation_rule = f"'{parameter_name}' => 'string|unique:{model_names}'"
+    validator_rules += f"{validation_rule},\n"
+
+    model_creation_code += f"'{parameter_name}' => $request->input('{parameter_name}'),\n"
+
+php_code_create = f"""
+$validator = Validator::make($request->all(), [
+{validator_rules}
+]);
+
+if ($validator->fails()) {{
+    return response()->json(['errors' => $validator->errors()], 422);
+}}
+
+${model_name} = {model_name_capitalized}::create([
+{model_creation_code}
+]);
+
+return response()->json(['{model_name}' => ${model_name}], 201);
+"""
+
+
+validator_rules = ""
+model_update_code = ""
+
+for parameter_name in parameter_names:
+    validation_rule = f"'{parameter_name}' => 'string'"
+    
+    if 'id' in parameter_name or 'number' in parameter_name or 'no' in parameter_name or 'code' in parameter_name:
+        validation_rule = f"'{parameter_name}' => 'string|unique:{model_names}'"
+
+    validator_rules += validation_rule + ",\n"
+
+    model_update_code += f"'{parameter_name}' => $request->input('{parameter_name}', ${model_name}->{parameter_name}),\n"
+
+php_code_update = f"""
+$validator = Validator::make($request->all(), [
+{validator_rules}
+]);
+
+if ($validator->fails()) {{
+    return response()->json(['errors' => $validator->errors()], 422);
+}}
+
+${model_name}->fill([
+{model_update_code}
+]);
+
+if ($request->has('password')) {{
+    ${model_name}->password = Hash::make($request->input('password'));
+}}
+
+${model_name}->save();
+
+return response()->json(['message' => '{model_name_capitalized} updated successfully', '{model_name}' => ${model_name}], 200);
+"""
+
+security_string = "security={{\"authorization\":{}}}"
+id_string = "{id}"
+
+crud_generate = f"""
+class {model_name_capitalized}Controller extends BaseController
+{{  
+    /**
+     * get all {model_name}
+     *
+     * @return \\Illuminate\\Http\\JsonResponse
+     *
+     * @OA\\Get(
+     *     {security_string},
+     *     path="/api/{model_names}",
+     *     summary="Get a list of {model_names}",
+     *     tags={{"{model_names_capitalized}"}},
+     *     @OA\\Response(
+     *         response=200,
+     *         description="List of {model_names}",
+     *     )
+     * )
+     */
+    public function index()
+    {{
+        ${model_names} = {model_name_capitalized}::all();
+
+        return response()->json(['{model_names}' => ${model_names}], 200);
+    }}
+
+    /**
+     * Store a newly created {model_name} in storage.
+     *
+     * @param \Illuminate\Http\Request $request
+     * @return \Illuminate\Http\JsonResponse
+     *
+     * @OA\Post(
+     *     {security_string},
+     *     path="/api/{model_names}",
+     *     summary="Create a new {model_name}",
+     *     tags={{"{model_names_capitalized}"}},
+    {parameter_names_swagger}
+     *     @OA\Response(
+     *         response=201,
+     *         description="{model_name} created successfully"
+     *     ),
+     *     @OA\Response(
+     *         response=422,
+     *         description="Validation errors"
+     *     )
+     * )
+     */
+    public function store(Request $request): JsonResponse
+    {{
+        {php_code_create}
+    }}
+
+    /**
+     * Display the specified {model_name}.
+     *
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     *
+     * @OA\Get(
+     *     {security_string},
+     *     path="/api/{model_names}/{id_string}",
+     *     summary="Get a {model_name} by ID",
+     *     tags={{"{model_names_capitalized}"}},
+     *     @OA\Parameter(
+     *         name="id",
+     *         in="path",
+     *         required=true,
+     *         description="{model_name_capitalized} ID",
+     *         @OA\Schema(type="integer")
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="{model_name_capitalized} found and returned successfully",
+     *     ),
+     *     @OA\Response(
+     *         response=404,
+     *         description="{model_name_capitalized} not found"
+     *     )
+     * )
+     */
+    public function show($id)
+    {{
+        ${model_name} = {model_name_capitalized}::find($id);
+
+        if (!${model_name}) {{
+            return response()->json(['message' => '{model_name_capitalized} not found'], 404);
+        }}
+
+        return response()->json(['{model_name}' => ${model_name}], 200);
+    }}
+
+    /**
+     * Update an {model_name}.
+     *
+     * @param  Request  $request
+     * @param  int  $id
+     * @return \Illuminate\Http\JsonResponse
+     *
+     * @OA\Put(
+     *     {security_string},
+     *     path="/api/{model_names}/{id_string}",
+     *     summary="Update an {model_name}",
+     *     tags={{"{model_names_capitalized}"}},
+     *     @OA\Parameter(
+     *         name="id",
+     *         in="path",
+     *         required=true,
+     *         description="ID of {model_name}",
+     *         @OA\Schema(type="integer")
+     *     ),
+    {parameter_names_swagger}
+     *     @OA\Response(
+     *         response=200,
+     *         description="{model_name} updated successfully",
+     *     ),
+     *     @OA\Response(
+     *         response=422,
+     *         description="Validation error or {model_name} not found",
+     *     ),
+     * )
+     */
+    public function update(Request $request, $id)
+    {{
+        ${model_name} = {model_name_capitalized}::find($id);
+
+        if (!${model_name}) {{
+            return response()->json(['message' => '{model_name_capitalized} not found'], 404);
+        }}
+        {php_code_update}
+    }}
+
+    /**
+     * Display the specified {model_name}.
+     *
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     *
+     * @OA\Delete(
+     *     {security_string},
+     *     path="/api/{model_names}/{id_string}",
+     *     summary="Delete a {model_name} by ID",
+     *     tags={{"{model_names_capitalized}"}},
+     *     @OA\Parameter(
+     *         name="id",
+     *         in="path",
+     *         required=true,
+     *         description="{model_name_capitalized} ID",
+     *         @OA\Schema(type="integer")
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="{model_name_capitalized} found and returned successfully",
+     *     ),
+     *     @OA\Response(
+     *         response=404,
+     *         description="{model_name_capitalized} not found"
+     *     )
+     * )
+     */
+    public function destroy($id)
+    {{
+        ${model_name} = {model_name_capitalized}::find($id);
+
+        if (!${model_name}) {{
+            return response()->json(['message' => '{model_name_capitalized} not found'], 404);
+        }}
+
+        if (${model_name}->delete()) {{
+            return response()->json(['message' => '{model_name_capitalized} deleted successfully'], 200);
+        }} else {{
+            return response()->json(['message' => 'Failed to delete {model_name}'], 500);
+        }}
+    }}
+}}
+"""
+
+
+# print(crud_generate)
+file_path = "crud_generate.txt"
+with open(file_path, "w") as file:
+    file.write(crud_generate)
+
+print(f"File '{file_path}' created with the content.")
